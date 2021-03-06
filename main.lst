@@ -1,0 +1,666 @@
+
+00001  0000             *          = $6000
+00002  6000             
+00003  6000             ; SCREEN MEMORY, UNEXPANDED VIC
+00004  6000             SCR        = $1E00
+00005  6000             
+00006  6000             ; COLOUR RAM
+00007  6000             CRAM       = $9600
+00008  6000             
+00009  6000             ; HORIZONTAL CENTERING (BIT 7 SETS INTERLACE)
+00010  6000             HCREG      = $9000
+00011  6000             
+00012  6000             ; NUMBER OF COLUMNS (BIT 7 IS PART OF VIDEO MATRIX ADDRESS)
+00013  6000             SCOLREG    = $9002
+00014  6000             
+00015  6000             ; NUMBER OF ROWS (BIT 0 SETS 8X8 OR 16X8 CHARS)
+00016  6000             SROWREG    = $9003
+00017  6000             
+00018  6000             ; START OF CHARACTER MEMORY (BIT4-7 IS REST OF VIDEO ADDRESS, NORMALLY F)
+00019  6000             CMEMREG    = $9005
+00020  6000             
+00021  6000             ; CHARACTER MEMORY
+00022  6000             CHMEMC     = $FD
+00023  6000             CHMEM      = $1400
+00024  6000             
+00025  6000             
+00026  6000                        ; WE INITIALIZE THE SCREEN TO 16X10 CHARACTERS OF 8X16 PIXELS EACH.
+00027  6000                        ; THIS WILL GIVE A SCREEN RESOLUTION OF 128X160 PIXELS.
+00028  6000                        ; THE CHARACTERS ARE FILLED IN ROW-FIRST.
+00029  6000                        ; IN THE CHARACTER MEMORY, THIS MEANS WE WILL ADRESS EACH PIXEL
+00030  6000                        ; (X,Y) AS
+00031  6000                        ; BIT = X & 0X07
+00032  6000                        ; ADR = CHMEM + X & 0XF8 + Y
+00033  6000                        ; PRESERVE REGISTERS
+00034  6000  48         GINIT      PHA
+00035  6001  8A                    TXA
+00036  6002  48                    PHA
+00037  6003  98                    TYA
+00038  6004  48                    PHA
+00039  6005                        ; FILL THE SCREEN MEMORY
+00040  6005  A2 00                 LDX            #$00
+00041  6007  8A                    TXA
+00042  6008                        ; A IS COLUMN INDEX. SAVE TO $01
+00043  6008  85 01      L7008      STA            $01
+00044  600A                        ; COPY COLUMN INDEX TO Y AS "FIRST ADDRESS OF COLUMN"
+00045  600A  A8                    TAY
+00046  600B                        ; INNER LOOP. X IS INCREMENTED FOR EACH NEW CELL
+00047  600B  8A         L700B      TXA
+00048  600C                        ; STORE X TO THE SCREEN MEMORY INDEXED BY Y
+00049  600C  99 00 1E              STA            SCR,Y
+00050  600F                        ; INCREMENT Y BY 16, ONE COLUMN. SO, NEXT ROW
+00051  600F  98                    TYA
+00052  6010  18                    CLC
+00053  6011  69 10                 ADC            #$10
+00054  6013  A8                    TAY
+00055  6014                        ; WHEN WE'VE PASSED #$A0, WE'VE DONE THE LAST ROW
+00056  6014  C9 A0                 CMP            #$A0
+00057  6016  B0 03                 BCS            L701B
+00058  6018                        ; INCREASE X AND REPEAT THE INNER LOOP
+00059  6018  E8                    INX
+00060  6019  D0 F0                 BNE            L700B
+00061  601B                        ; OUTER LOOP. LOAD STORED A AND INCREMENT IT
+00062  601B  A5 01      L701B      LDA            $01
+00063  601D  18                    CLC
+00064  601E  69 01                 ADC            #$01
+00065  6020                        ; THIS COULD BE IMPROVED BY REPLACING BOTH INX WITH A SINGLE ONE
+00066  6020  E8                    INX
+00067  6021                        ; UNLESS WE'VE PASSED COLUMN 16, REPEAT
+00068  6021  C9 10                 CMP            #$10
+00069  6023  90 E3                 BCC            L7008
+00070  6025                        ; INITIALIZE COLOR RAM AT $9600, 16X10 = 0XA0, BUT OFFSET BY ONE
+00071  6025  A0 A1                 LDY            #$A1
+00072  6027                        ; THE COLOR WAS STORED AT $00 BEFORE CALLING $7000
+00073  6027  A5 00                 LDA            $00
+00074  6029  99 FF 95   L7029      STA            CRAM-1,Y
+00075  602C  88                    DEY
+00076  602D  D0 FA                 BNE            L7029
+00077  602F                        ; ADJUST HORIZONTAL CENTERING
+00078  602F  A9 12                 LDA            #$12
+00079  6031  8D 00 90              STA            HCREG
+00080  6034                        ; SET 16 COLUMNS. BIT 7 PART OF VIDEO MATRIX ADDRESS
+00081  6034  A9 90                 LDA            #$90
+00082  6036  8D 02 90              STA            SCOLREG
+00083  6039                        ; 00010101 = 16X8 CHARS, 10 ROWS
+00084  6039  A9 15                 LDA            #$15
+00085  603B  8D 03 90              STA            SROWREG
+00086  603E                        ; SCREEN (CHAR BUFFER) AT $1400, F FOR REST OF VIDEO ADDRESS
+00087  603E  A9 FD                 LDA            #CHMEMC
+00088  6040  8D 05 90              STA            CMEMREG
+00089  6043                        ; POP EVERYTHING AND RETURN
+00090  6043  68                    PLA
+00091  6044  A8                    TAY
+00092  6045  68                    PLA
+00093  6046  AA                    TAX
+00094  6047  68                    PLA
+00095  6048  60                    RTS
+00096  6049             
+00097  6049                        ; WE HAVE 16X10 CHARACTERS OF 16X8 PIXELS, WHICH MAKES FOR A
+00098  6049                        ; A CHARACTER GENERATOR CONTAINING 16*10*16 BYTES = 2560 BYTES.
+00099  6049                        ; THE INNER LOOP HANDLES THE LOW BYTE OF THE ADDRESS AND THE OUTER
+00100  6049                        ; LOOP HANDLES THE HIGH BYTE, BUT WE STOP AFTER $0A RUNS OF THE
+00101  6049                        ; OUTER LOOP, BECAUSE 2560 / 256 = 10
+00102  6049             
+00103  6049                        ; NOTE THAT THE CODE AS IT STANDS TAKES ADVANTAGE OF THE FACT THAT
+00104  6049                        ; THE LOW BYTE OF THE ADDRESS IS ZERO, AND DOESN'T RELOAD A WITH
+00105  6049                        ; THE INITIALIZATION VALUE.
+00106  6049                        
+00107  6049             GCLRSCR    ; PRESERVE REGISTERS
+00108  6049  48                    PHA
+00109  604A  8A                    TXA
+00110  604B  48                    PHA
+00111  604C  98                    TYA
+00112  604D  48                    PHA
+00113  604E  A9 14                 LDA            #>CHMEM
+00114  6050  85 01                 STA            $01
+00115  6052  A9 00                 LDA            #<CHMEM
+00116  6054  85 00                 STA            $00
+00117  6056  A0 00                 LDY            #$00
+00118  6058  A2 0A                 LDX            #$0A
+00119  605A  91 00      L705A      STA            ($00),Y
+00120  605C  E6 00                 INC            $00
+00121  605E  D0 FA                 BNE            L705A
+00122  6060  E6 01                 INC            $01
+00123  6062  CA                    DEX
+00124  6063  D0 F5                 BNE            L705A
+00125  6065  68                    PLA
+00126  6066  A8                    TAY
+00127  6067  68                    PLA
+00128  6068  AA                    TAX
+00129  6069  68                    PLA
+00130  606A  60                    RTS
+00131  606B             
+00132  606B                        ; FOR EACH ROW, ROTATE THE ENTIRE ROW LEFT
+00133  606B  48         GSCRLLEFT  PHA
+00134  606C  8A                    TXA
+00135  606D  48                    PHA
+00136  606E  98                    TYA
+00137  606F  48                    PHA
+00138  6070  A6 01                 LDX            $01
+00139  6072                        ; GO FROM RIGHT TO LEFT AND ROTATE EACH OCTET THROUGH CARRY
+00140  6072  18         L7072      CLC
+00141  6073  3E 5F 1D              ROL            $1D5F,X
+00142  6076  3E BF 1C              ROL            $1CBF,X
+00143  6079  3E 1F 1C              ROL            $1C1F,X
+00144  607C  3E 7F 1B              ROL            $1B7F,X
+00145  607F  3E DF 1A              ROL            $1ADF,X
+00146  6082  3E 3F 1A              ROL            $1A3F,X
+00147  6085  3E 9F 19              ROL            $199F,X
+00148  6088  3E FF 18              ROL            $18FF,X
+00149  608B  3E 5F 18              ROL            $185F,X
+00150  608E  3E BF 17              ROL            $17BF,X
+00151  6091  3E 1F 17              ROL            $171F,X
+00152  6094  3E 7F 16              ROL            $167F,X
+00153  6097  3E DF 15              ROL            $15DF,X
+00154  609A  3E 3F 15              ROL            $153F,X
+00155  609D  3E 9F 14              ROL            $149F,X
+00156  60A0  3E FF 13              ROL            $13FF,X
+00157  60A3  2E FF 13              ROL            $13FF
+00158  60A6                        ; FINALLY, COPY THE REMAINDER OVER TO THE RIGHT END OF THE ROW
+00159  60A6  AD FF 13              LDA            $13FF
+00160  60A9  29 01                 AND            #$01
+00161  60AB  1D 5F 1D              ORA            $1D5F,X
+00162  60AE  9D 5F 1D              STA            $1D5F,X
+00163  60B1  CA                    DEX
+00164  60B2  E4 00                 CPX            $00
+00165  60B4  D0 BC                 BNE            L7072
+00166  60B6  68                    PLA
+00167  60B7  A8                    TAY
+00168  60B8  68                    PLA
+00169  60B9  AA                    TAX
+00170  60BA  68                    PLA
+00171  60BB  60                    RTS
+00172  60BC             
+00173  60BC                        ; FOR EACH ROW, ROTATE THE ENTIRE ROW RIGHT
+00174  60BC  48         GSCRLRGHT  PHA
+00175  60BD  8A                    TXA
+00176  60BE  48                    PHA
+00177  60BF  98                    TYA
+00178  60C0  48                    PHA
+00179  60C1  A6 01                 LDX            $01
+00180  60C3                        ; GO FROM LEFT TO RIGHT AND ROTATE EACH OCTET THROUGH CARRY
+00181  60C3  18         L70C3      CLC
+00182  60C4  7E FF 13              ROR            $13FF,X
+00183  60C7  7E 9F 14              ROR            $149F,X
+00184  60CA  7E 3F 15              ROR            $153F,X
+00185  60CD  7E DF 15              ROR            $15DF,X
+00186  60D0  7E 7F 16              ROR            $167F,X
+00187  60D3  7E 1F 17              ROR            $171F,X
+00188  60D6  7E BF 17              ROR            $17BF,X
+00189  60D9  7E 5F 18              ROR            $185F,X
+00190  60DC  7E FF 18              ROR            $18FF,X
+00191  60DF  7E 9F 19              ROR            $199F,X
+00192  60E2  7E 3F 1A              ROR            $1A3F,X
+00193  60E5  7E DF 1A              ROR            $1ADF,X
+00194  60E8  7E 7F 1B              ROR            $1B7F,X
+00195  60EB  7E 1F 1C              ROR            $1C1F,X
+00196  60EE  7E BF 1C              ROR            $1CBF,X
+00197  60F1  7E 5F 1D              ROR            $1D5F,X
+00198  60F4  6E FF 13              ROR            $13FF
+00199  60F7                        ; FINALLY, COPY THE REMAINDER OVER TO THE LEFT END OF THE ROW
+00200  60F7  AD FF 13              LDA            $13FF
+00201  60FA  29 80                 AND            #$80
+00202  60FC  1D FF 13              ORA            $13FF,X
+00203  60FF  9D FF 13              STA            $13FF,X
+00204  6102  CA                    DEX
+00205  6103  E4 00                 CPX            $00
+00206  6105  D0 BC                 BNE            L70C3
+00207  6107  68                    PLA
+00208  6108  A8                    TAY
+00209  6109  68                    PLA
+00210  610A  AA                    TAX
+00211  610B  68                    PLA
+00212  610C  60                    RTS
+00213  610D             
+00214  610D  48         GSCRLDWN   PHA
+00215  610E  8A                    TXA
+00216  610F  48                    PHA
+00217  6110  98                    TYA
+00218  6111  48                    PHA
+00219  6112  A2 00                 LDX            #$00
+00220  6114  86 00                 STX            $00
+00221  6116  CA                    DEX
+00222  6117  86 02                 STX            $02
+00223  6119  A2 14                 LDX            #$14
+00224  611B  86 01                 STX            $01
+00225  611D  CA                    DEX
+00226  611E  86 03                 STX            $03
+00227  6120  A0 00      L7120      LDY            #$00
+00228  6122  B1 00                 LDA            ($00),Y
+00229  6124  91 02                 STA            ($02),Y
+00230  6126  18                    CLC
+00231  6127  A5 02                 LDA            $02
+00232  6129  69 01                 ADC            #$01
+00233  612B  85 02                 STA            $02
+00234  612D  A5 03                 LDA            $03
+00235  612F  69 00                 ADC            #$00
+00236  6131  85 03                 STA            $03
+00237  6133  18                    CLC
+00238  6134  A5 00                 LDA            $00
+00239  6136  69 01                 ADC            #$01
+00240  6138  85 00                 STA            $00
+00241  613A  A5 01                 LDA            $01
+00242  613C  69 00                 ADC            #$00
+00243  613E  85 01                 STA            $01
+00244  6140  C9 1E                 CMP            #>SCR
+00245  6142  D0 DC                 BNE            L7120
+00246  6144  A2 FF                 LDX            #$FF
+00247  6146  86 00                 STX            $00
+00248  6148  A2 1D                 LDX            #$1D
+00249  614A  86 01                 STX            $01
+00250  614C  86 03                 STX            $03
+00251  614E  A2 5F                 LDX            #$5F
+00252  6150  86 02                 STX            $02
+00253  6152  A0 00      L7152      LDY            #$00
+00254  6154  B1 02                 LDA            ($02),Y
+00255  6156  91 00                 STA            ($00),Y
+00256  6158  38                    SEC
+00257  6159  A5 00                 LDA            $00
+00258  615B  E9 A0                 SBC            #$A0
+00259  615D  85 00                 STA            $00
+00260  615F  A5 01                 LDA            $01
+00261  6161  E9 00                 SBC            #$00
+00262  6163  85 01                 STA            $01
+00263  6165  38                    SEC
+00264  6166  A5 02                 LDA            $02
+00265  6168  E9 A0                 SBC            #$A0
+00266  616A  85 02                 STA            $02
+00267  616C  A5 03                 LDA            $03
+00268  616E  E9 00                 SBC            #$00
+00269  6170  85 03                 STA            $03
+00270  6172  A5 01                 LDA            $01
+00271  6174  C9 13                 CMP            #$13
+00272  6176  D0 DA                 BNE            L7152
+00273  6178  68                    PLA
+00274  6179  A8                    TAY
+00275  617A  68                    PLA
+00276  617B  AA                    TAX
+00277  617C  68                    PLA
+00278  617D  60                    RTS
+00279  617E             
+00280  617E  48         GSCRLUP    PHA
+00281  617F  8A                    TXA
+00282  6180  48                    PHA
+00283  6181  98                    TYA
+00284  6182  48                    PHA
+00285  6183  A2 FE                 LDX            #$FE
+00286  6185  86 00                 STX            $00
+00287  6187  E8                    INX
+00288  6188  86 02                 STX            $02
+00289  618A  A2 1D                 LDX            #$1D
+00290  618C  86 01                 STX            $01
+00291  618E  86 03                 STX            $03
+00292  6190  AD FF 1D              LDA            $1DFF
+00293  6193  8D FF 13              STA            $13FF
+00294  6196  A0 00      L7196      LDY            #$00
+00295  6198  B1 00                 LDA            ($00),Y
+00296  619A  91 02                 STA            ($02),Y
+00297  619C  38                    SEC
+00298  619D  A5 02                 LDA            $02
+00299  619F  E9 01                 SBC            #$01
+00300  61A1  85 02                 STA            $02
+00301  61A3  A5 03                 LDA            $03
+00302  61A5  E9 00                 SBC            #$00
+00303  61A7  85 03                 STA            $03
+00304  61A9  38                    SEC
+00305  61AA  A5 00                 LDA            $00
+00306  61AC  E9 01                 SBC            #$01
+00307  61AE  85 00                 STA            $00
+00308  61B0  A5 01                 LDA            $01
+00309  61B2  E9 00                 SBC            #$00
+00310  61B4  85 01                 STA            $01
+00311  61B6  C9 13                 CMP            #$13
+00312  61B8  D0 DC                 BNE            L7196
+00313  61BA  A2 00                 LDX            #$00
+00314  61BC  86 00                 STX            $00
+00315  61BE  A2 14                 LDX            #$14
+00316  61C0  86 01                 STX            $01
+00317  61C2  86 03                 STX            $03
+00318  61C4  A2 A0                 LDX            #$A0
+00319  61C6  86 02                 STX            $02
+00320  61C8  A0 00      L71C8      LDY            #$00
+00321  61CA  B1 02                 LDA            ($02),Y
+00322  61CC  91 00                 STA            ($00),Y
+00323  61CE  18                    CLC
+00324  61CF  A5 00                 LDA            $00
+00325  61D1  69 A0                 ADC            #$A0
+00326  61D3  85 00                 STA            $00
+00327  61D5  A5 01                 LDA            $01
+00328  61D7  69 00                 ADC            #$00
+00329  61D9  85 01                 STA            $01
+00330  61DB  18                    CLC
+00331  61DC  A5 02                 LDA            $02
+00332  61DE  69 A0                 ADC            #$A0
+00333  61E0  85 02                 STA            $02
+00334  61E2  A5 03                 LDA            $03
+00335  61E4  69 00                 ADC            #$00
+00336  61E6  85 03                 STA            $03
+00337  61E8  C9 1E                 CMP            #>SCR
+00338  61EA  D0 DC                 BNE            L71C8
+00339  61EC  AD FF 13              LDA            $13FF
+00340  61EF  8D 60 1D              STA            $1D60
+00341  61F2  68                    PLA
+00342  61F3  A8                    TAY
+00343  61F4  68                    PLA
+00344  61F5  AA                    TAX
+00345  61F6  68                    PLA
+00346  61F7  60                    RTS
+00347  61F8             
+00348  61F8  48         L71F8      PHA
+00349  61F9  8A                    TXA
+00350  61FA  48                    PHA
+00351  61FB  98                    TYA
+00352  61FC  48                    PHA
+00353  61FD  A5 00                 LDA            $00
+00354  61FF  A4 01                 LDY            $01
+00355  6201  84 00                 STY            $00
+00356  6203                        ; A=$00, MOVED $01 TO $00
+00357  6203  A8                    TAY
+00358  6204  29 07                 AND            #$07
+00359  6206  AA                    TAX
+00360  6207                        ; Y=OLD $00, X=OLD $00 & 0X07
+00361  6207  A9 00                 LDA            #$00
+00362  6209                        ; ZERO OUT $01
+00363  6209  85 01                 STA            $01
+00364  620B  98                    TYA
+00365  620C  4A                    LSR            A
+00366  620D  4A                    LSR            A
+00367  620E  4A                    LSR            A
+00368  620F                        ; Y=A=Y/8 (SHIFTED RIGHT THRICE)
+00369  620F  A8                    TAY
+00370  6210  6A                    ROR            A
+00371  6211  6A                    ROR            A
+00372  6212  29 80                 AND            #$80
+00373  6214                        ; A NOW HAS ONLY THE OLD BIT 5 IN THE BIT 7 POSITION
+00374  6214  18                    CLC
+00375  6215                        ; WE ADD THIS WITH CARRY TO $00,$01
+00376  6215  65 00                 ADC            $00
+00377  6217  85 00                 STA            $00
+00378  6219  A9 00                 LDA            #$00
+00379  621B  65 01                 ADC            $01
+00380  621D  85 01                 STA            $01
+00381  621F  18                    CLC
+00382  6220  98                    TYA
+00383  6221  6A                    ROR            A
+00384  6222  6A                    ROR            A
+00385  6223  6A                    ROR            A
+00386  6224  6A                    ROR            A
+00387  6225  29 E0                 AND            #$E0
+00388  6227  65 00                 ADC            $00
+00389  6229  85 00                 STA            $00
+00390  622B  A9 00                 LDA            #$00
+00391  622D  65 01                 ADC            $01
+00392  622F  85 01                 STA            $01
+00393  6231  98                    TYA
+00394  6232  4A                    LSR            A
+00395  6233  4A                    LSR            A
+00396  6234  4A                    LSR            A
+00397  6235  18                    CLC
+00398  6236  65 01                 ADC            $01
+00399  6238  85 01                 STA            $01
+00400  623A  98                    TYA
+00401  623B  4A                    LSR            A
+00402  623C  18                    CLC
+00403  623D  65 01                 ADC            $01
+00404  623F  85 01                 STA            $01
+00405  6241  A9 14                 LDA            #$14
+00406  6243  65 01                 ADC            $01
+00407  6245  85 01                 STA            $01
+00408  6247  86 02                 STX            $02
+00409  6249  38                    SEC
+00410  624A  A9 00                 LDA            #$00
+00411  624C  A2 FF                 LDX            #$FF
+00412  624E  E8         L724E      INX
+00413  624F  6A                    ROR            A
+00414  6250  E4 02                 CPX            $02
+00415  6252  D0 FA                 BNE            L724E
+00416  6254  85 02                 STA            $02
+00417  6256  98                    TYA
+00418  6257  C9 08                 CMP            #$08
+00419  6259  30 0D                 BMI            L7268
+00420  625B  38                    SEC
+00421  625C  A5 00                 LDA            $00
+00422  625E  E9 01                 SBC            #$01
+00423  6260  85 00                 STA            $00
+00424  6262  A5 01                 LDA            $01
+00425  6264  E9 00                 SBC            #$00
+00426  6266  85 01                 STA            $01
+00427  6268  68         L7268      PLA
+00428  6269  A8                    TAY
+00429  626A  68                    PLA
+00430  626B  AA                    TAX
+00431  626C  68                    PLA
+00432  626D  60                    RTS
+00433  626E             
+00434  626E  48         GDRAW      PHA
+00435  626F  98                    TYA
+00436  6270  48                    PHA
+00437  6271  8A                    TXA
+00438  6272  48                    PHA
+00439  6273  20 F8 61              JSR            L71F8
+00440  6276  A0 00                 LDY            #$00
+00441  6278  B1 00                 LDA            ($00),Y
+00442  627A  05 02                 ORA            $02
+00443  627C  91 00                 STA            ($00),Y
+00444  627E  68                    PLA
+00445  627F  AA                    TAX
+00446  6280  68                    PLA
+00447  6281  A8                    TAY
+00448  6282  68                    PLA
+00449  6283  60                    RTS
+00450  6284             
+00451  6284  48         GERASE     PHA
+00452  6285  98                    TYA
+00453  6286  48                    PHA
+00454  6287  8A                    TXA
+00455  6288  48                    PHA
+00456  6289  20 F8 61              JSR            L71F8
+00457  628C  A4 02                 LDY            $02
+00458  628E  49 FF                 EOR            #$FF
+00459  6290  A0 00                 LDY            #$00
+00460  6292  31 00                 AND            ($00),Y
+00461  6294  91 00                 STA            ($00),Y
+00462  6296  68                    PLA
+00463  6297  AA                    TAX
+00464  6298  68                    PLA
+00465  6299  A8                    TAY
+00466  629A  68                    PLA
+00467  629B  60                    RTS
+00468  629C             
+00469  629C  A9 02      L729C      LDA            #$02
+00470  629E  85 00                 STA            $00
+00471  62A0  20 00 60              JSR            GINIT
+00472  62A3                        ; SET DDRB ON VIA2 TO ALL OUT EXCEPT PIN7/JOY3
+00473  62A3  A9 7F                 LDA            #$7F
+00474  62A5  8D 22 91              STA            $9122
+00475  62A8  20 49 60              JSR            GCLRSCR
+00476  62AB                        ; READ VIA2 PORTA
+00477  62AB  AD 11 91   DRAWLOOP   LDA            $9111
+00478  62AE  A8                    TAY
+00479  62AF                        ; JOY 0
+00480  62AF  29 04                 AND            #$04
+00481  62B1  C9 00                 CMP            #$00
+00482  62B3  D0 03                 BNE            L72B8
+00483  62B5  20 7E 61              JSR            GSCRLUP
+00484  62B8  98         L72B8      TYA
+00485  62B9                        ; JOY 1
+00486  62B9  29 08                 AND            #$08
+00487  62BB  C9 00                 CMP            #$00
+00488  62BD  D0 03                 BNE            L72C2
+00489  62BF  20 0D 61              JSR            GSCRLDWN
+00490  62C2  98         L72C2      TYA
+00491  62C3                        ; JOY 2
+00492  62C3  29 10                 AND            #$10
+00493  62C5  C9 00                 CMP            #$00
+00494  62C7  D0 0B                 BNE            L72D4
+00495  62C9  A9 00                 LDA            #$00
+00496  62CB  85 00                 STA            $00
+00497  62CD  A9 A0                 LDA            #$A0
+00498  62CF  85 01                 STA            $01
+00499  62D1  20 BC 60              JSR            GSCRLRGHT
+00500  62D4                        ; READ VIA2 PORTB
+00501  62D4  AD 20 91   L72D4      LDA            $9120
+00502  62D7                        ; JOY 3
+00503  62D7  29 80                 AND            #$80
+00504  62D9  C9 00                 CMP            #$00
+00505  62DB  D0 0B                 BNE            L72E8
+00506  62DD  A9 00                 LDA            #$00
+00507  62DF  85 00                 STA            $00
+00508  62E1  A9 A0                 LDA            #$A0
+00509  62E3  85 01                 STA            $01
+00510  62E5  20 6B 60              JSR            GSCRLLEFT
+00511  62E8  A9 3F      L72E8      LDA            #$3F
+00512  62EA  85 00                 STA            $00
+00513  62EC  A9 4F                 LDA            #$4F
+00514  62EE  85 01                 STA            $01
+00515  62F0  98                    TYA
+00516  62F1                        ; CHECK FIRE BUTTON, FROM VIA2 PORTA
+00517  62F1  29 20                 AND            #$20
+00518  62F3  C9 00                 CMP            #$00
+00519  62F5  F0 06                 BEQ            L72FD
+00520  62F7  20 6E 62              JSR            GDRAW
+00521  62FA  4C AB 62              JMP            DRAWLOOP
+00522  62FD             
+00523  62FD  20 84 62   L72FD      JSR            GERASE
+00524  6300  4C AB 62              JMP            DRAWLOOP
+00525  6303             
+00526  6303                        ; ADDRESS AND BITMASK FROM [X,Y] COORDINATES
+00527  6303                        ; [X,Y] = [X,Y]
+00528  6303                        ; RESULT: [A,Y] = ADDRESS, X=BITMASK
+00529  6303  18         XLATE      CLC
+00530  6304  8A                    TXA
+00531  6305  48                    PHA
+00532  6306  98                    TYA
+00533  6307  48                    PHA
+00534  6308                        ; INITIALIZE [X,Y] AS A 16-BIT VERSION OF X & 0XF8
+00535  6308  8A                    TXA
+00536  6309  29 F8                 AND #$F8
+00537  630B  AA                    TAX
+00538  630C  A9 00                 LDA #$00
+00539  630E  A8                    TAY
+00540  630F                        ; NOW ROTATE [X,Y] TWICE TO YIELD (X & 0XF8) * 0X04
+00541  630F  8A                    TXA
+00542  6310  2A                    ROL
+00543  6311  AA                    TAX
+00544  6312  98                    TYA
+00545  6313  2A                    ROL
+00546  6314  A8                    TAY
+00547  6315  8A                    TXA
+00548  6316  2A                    ROL
+00549  6317  AA                    TAX
+00550  6318  98                    TYA
+00551  6319  2A                    ROL
+00552  631A  A8                    TAY
+00553  631B                        ; STORE THE TEMPORARY SUM AT [$00, $01]
+00554  631B  85 01                 STA $01
+00555  631D  8A                    TXA
+00556  631E  85 00                 STA $00
+00557  6320                        ; ROTATE [X,Y] TWICE AGAIN TO YIELD (X & 0XF8) * 0X10
+00558  6320  2A                    ROL
+00559  6321  AA                    TAX
+00560  6322  98                    TYA
+00561  6323  2A                    ROL
+00562  6324  A8                    TAY
+00563  6325  8A                    TXA
+00564  6326  2A                    ROL
+00565  6327  AA                    TAX
+00566  6328  98                    TYA
+00567  6329  2A                    ROL
+00568  632A  A8                    TAY
+00569  632B                        ; ADD THE TEMPORARY SUM, TO YIELD (X & 0XF8) * 0X14
+00570  632B  8A                    TXA
+00571  632C  65 00                 ADC $00
+00572  632E  85 00                 STA $00
+00573  6330  98                    TYA
+00574  6331  65 01                 ADC $01
+00575  6333  85 01                 STA $01
+00576  6335                        ; NOW POP Y FROM THE STACK AND ADD THAT TO THE ADDRESS,
+00577  6335                        ; THEN ADD THE BASE CHMEM ADDRESS TO THAT.
+00578  6335  68                    PLA
+00579  6336  65 00                 ADC $00
+00580  6338  85 00                 STA $00
+00581  633A  A5 01                 LDA $01
+00582  633C  69 00                 ADC #$00
+00583  633E  85 01                 STA $01
+00584  6340  A9 00                 LDA #<CHMEM
+00585  6342  65 00                 ADC $00
+00586  6344  85 00                 STA $00
+00587  6346  A9 14                 LDA #>CHMEM
+00588  6348  65 01                 ADC $01
+00589  634A  85 01                 STA $01
+00590  634C                        ; POP THE ORIGINAL X AND GENERATE THE BITMASK FROM BITS 0-3
+00591  634C                        ; REMEMBER, WE NEED TO COUNT FROM MSB TO LSB HERE
+00592  634C  68                    PLA
+00593  634D  29 07                 AND #$07
+00594  634F  AA                    TAX
+00595  6350  A9 00                 LDA #$00
+00596  6352  38                    SEC
+00597  6353  6A         @XLLOOP    ROR
+00598  6354  CA                    DEX
+00599  6355  10 FC                 BPL @XLLOOP
+00600  6357  AA                    TAX
+00601  6358  A5 00                 LDA $00
+00602  635A  A8                    TAY
+00603  635B  A5 01                 LDA $01
+00604  635D  60                    RTS
+00605  635E             
+00606  635E                        ; PLOT A PIXEL, EITHER SET IT OR RESET IT
+00607  635E                        ; [X,Y] = COORDINATES, A = RESET?
+00608  635E             PLOT       ; PUSH THE RESET? BOOL
+00609  635E  48                    PHA
+00610  635F                        ; TRANSLATE THE COORDINATES INTO AN ADDRESS AND BITMASK
+00611  635F  20 03 63              JSR XLATE
+00612  6362  85 01                 STA $01
+00613  6364  98                    TYA
+00614  6365  85 00                 STA $00
+00615  6367  8A                    TXA
+00616  6368  85 02                 STA $02
+00617  636A                        ; NOW POP RESET? AND DECIDE WHETHER TO SET OR CLEAR THE PIXEL
+00618  636A  68                    PLA
+00619  636B  F0 0F                 BEQ @PLOT2
+00620  636D  A9 FF                 LDA #$FF
+00621  636F  45 02                 EOR $02
+00622  6371  85 02                 STA $02
+00623  6373  A0 00                 LDY #$00
+00624  6375  B1 00                 LDA ($00),Y
+00625  6377  25 02                 AND $02
+00626  6379  91 00                 STA ($00),Y
+00627  637B  60                    RTS
+00628  637C  A0 00      @PLOT2     LDY #$00
+00629  637E  B1 00                 LDA ($00),Y
+00630  6380  05 02                 ORA $02
+00631  6382  91 00                 STA ($00),Y
+00632  6384  60                    RTS
+00633  6385             
+00634  6385  A9 02      GTEST      LDA #$02
+00635  6387  85 00                 STA $00
+00636  6389  20 00 60              JSR GINIT
+00637  638C  20 49 60              JSR GCLRSCR
+00638  638F  A0 0A                 LDY #$0A
+00639  6391  98         @GTLP2     TYA
+00640  6392  48                    PHA
+00641  6393  A2 08                 LDX #08
+00642  6395  8A         @GTLOOP    TXA
+00643  6396  48                    PHA
+00644  6397  98                    TYA
+00645  6398  48                    PHA
+00646  6399  A9 00                 LDA #$00
+00647  639B  20 5E 63              JSR PLOT
+00648  639E  68                    PLA
+00649  639F  A8                    TAY
+00650  63A0  68                    PLA
+00651  63A1  AA                    TAX
+00652  63A2  C8                    INY
+00653  63A3  E8                    INX
+00654  63A4  8A                    TXA
+00655  63A5  C9 60                 CMP #$60
+00656  63A7  D0 EC                 BNE @GTLOOP
+00657  63A9  68                    PLA
+00658  63AA  A8                    TAY
+00659  63AB  C8                    INY
+00660  63AC  C8                    INY
+00661  63AD  98                    TYA
+00662  63AE  C9 2A                 CMP #$2A
+00663  63B0  D0 DF                 BNE @GTLP2
+00664  63B2  4C B2 63   @GTSTL     JMP @GTSTL
+00665  63B5             
